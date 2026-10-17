@@ -5,6 +5,7 @@ import esphome.config_validation as cv
 from esphome.const import CONF_ID
 
 DEPENDENCIES = ["spi"]
+AUTO_LOAD = ["event"]
 MULTI_CONF = True
 
 CONF_CE_PIN = "ce_pin"
