@@ -274,8 +274,10 @@ void XiaomiLightbar::handle_raw_(const uint8_t raw[RAW_SIZE]) {
     return;
   }
   uint8_t missed;
-  if (!this->sequences_.accept_rx(packet.serial, packet.seq, &missed))
+  if (!this->sequences_.accept_rx(packet.serial, packet.seq, packet.command, packet.options, millis(), &missed)) {
+    ESP_LOGVV(TAG, "Dropping repeated copy: %s seq %u", command_name(packet.command), packet.seq);
     return;
+  }
   if (missed > 0)
     ESP_LOGW(TAG, "Missed %u packet(s) from 0x%06" PRIX32 " before seq %u", missed, packet.serial, packet.seq);
   ESP_LOGD(TAG, "Received %s (0x%02X) from 0x%06" PRIX32 ", seq %u", command_name(packet.command), packet.options,

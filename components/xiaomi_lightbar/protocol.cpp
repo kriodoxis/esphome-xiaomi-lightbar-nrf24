@@ -72,7 +72,7 @@ SequenceTable::Entry *SequenceTable::find_or_add_(uint32_t serial) {
   if (this->count_ >= MAX_SERIALS)
     return nullptr;
   Entry *entry = &this->entries_[this->count_++];
-  *entry = Entry{serial, 0, 0, false};
+  *entry = Entry{}; entry->serial = serial;
   return entry;
 }
 
@@ -84,21 +84,30 @@ bool SequenceTable::next_tx(uint32_t serial, uint8_t &seq) {
   return true;
 }
 
-bool SequenceTable::accept_rx(uint32_t serial, uint8_t seq, uint8_t *missed) {
+bool SequenceTable::accept_rx(uint32_t serial, uint8_t seq, uint8_t command, uint8_t options,
+                              uint32_t now_ms, uint8_t *missed) {
   Entry *entry = this->find_or_add_(serial);
   if (entry == nullptr)
     return false;
-  // The remote sends every press as a burst of identical packets; only the first may be handled. The
-  // difference is taken as int8_t so the 8-bit counter can wrap around. A big jump backwards (e.g. the
-  // remote lost power) is accepted.
+
+  // Only an identical message seen a moment ago is a burst copy. Unsigned subtraction handles millis() wrap.
+  for (const Seen &s : entry->seen) {
+    if (s.valid && s.seq == seq && s.command == command && s.options == options &&
+        now_ms - s.at_ms < DEDUP_WINDOW_MS)
+      return false;
+  }
+
   int8_t difference = (int8_t) (uint8_t) (seq - entry->last_rx);
-  if (entry->has_rx && difference <= 0 && difference > -64)
-    return false;
   if (missed != nullptr)
-    *missed = entry->has_rx && difference > 0 ? difference - 1 : 0;
-  entry->last_rx = seq;
+    *missed = entry->has_rx && difference > 1 ? difference - 1 : 0;
+  // Only move forward (or accept a big jump back, e.g. the remote lost power).
+  if (!entry->has_rx || difference > 0 || difference <= -64)
+    entry->last_rx = seq;
   entry->has_rx = true;
-  entry->tx_seq = seq;
+  entry->tx_seq = entry->last_rx;
+
+  entry->seen[entry->seen_next] = Seen{now_ms, seq, command, options, true};
+  entry->seen_next = (entry->seen_next + 1) % HISTORY;
   return true;
 }
 

@@ -78,19 +78,29 @@ bool merge_steps(uint8_t command, uint8_t first, uint8_t second, uint8_t &merged
 class SequenceTable {
  public:
   static constexpr uint8_t MAX_SERIALS = 32;
+  static constexpr uint8_t HISTORY = 4;
+  // Copies of one press arrive within ~200 ms; keep some margin.
+  static constexpr uint32_t DEDUP_WINDOW_MS = 500;
 
-  // Next counter to send with. Returns false if the serial is new and the table is full.
   bool next_tx(uint32_t serial, uint8_t &seq);
-  // True if a received packet is new; false for a repeated or old copy, or if the serial is new and
-  // the table is full. `missed`, if given, receives the number of counters skipped since the last one.
-  bool accept_rx(uint32_t serial, uint8_t seq, uint8_t *missed = nullptr);
+  bool accept_rx(uint32_t serial, uint8_t seq, uint8_t command, uint8_t options, uint32_t now_ms,
+                 uint8_t *missed = nullptr);
 
  protected:
+  struct Seen {
+    uint32_t at_ms;
+    uint8_t seq;
+    uint8_t command;
+    uint8_t options;
+    bool valid;
+  };
   struct Entry {
     uint32_t serial;
     uint8_t tx_seq;
-    uint8_t last_rx;
+    uint8_t last_rx;   // newest seq accepted, only used for the "missed" count
     bool has_rx;
+    Seen seen[HISTORY];
+    uint8_t seen_next;
   };
   Entry *find_or_add_(uint32_t serial);
 
